@@ -622,7 +622,11 @@ void InfEngineBackendNet::init(int targetId)
 
 #endif  // IE < R5
 
-static std::map<InferenceEngine::TargetDevice, InferenceEngine::InferenceEnginePluginPtr> sharedPlugins;
+static std::map<InferenceEngine::TargetDevice, InferenceEngine::InferenceEnginePluginPtr>& getSharedPlugins()
+{
+    static std::map<InferenceEngine::TargetDevice, InferenceEngine::InferenceEnginePluginPtr> sharedPlugins;
+    return sharedPlugins;
+}
 
 void InfEngineBackendNet::initPlugin(InferenceEngine::ICNNNetwork& net)
 {
@@ -630,6 +634,8 @@ void InfEngineBackendNet::initPlugin(InferenceEngine::ICNNNetwork& net)
 
     try
     {
+        AutoLock lock(getInitializationMutex());
+        auto& sharedPlugins = getSharedPlugins();
         auto pluginIt = sharedPlugins.find(targetDevice);
         if (pluginIt != sharedPlugins.end())
         {
@@ -760,7 +766,7 @@ void InfEngineBackendLayer::forward(InputArrayOfArrays inputs, OutputArrayOfArra
     CV_Error(Error::StsInternal, "Choose Inference Engine as a preferable backend.");
 }
 
-InferenceEngine::TBlob<int16_t>::Ptr convertFp16(const InferenceEngine::Blob::Ptr& blob)
+InferenceEngine::Blob::Ptr convertFp16(const InferenceEngine::Blob::Ptr& blob)
 {
     auto halfs = InferenceEngine::make_shared_blob<int16_t>(InferenceEngine::Precision::FP16, blob->layout(), blob->dims());
     halfs->allocate();
@@ -797,7 +803,8 @@ CV__DNN_EXPERIMENTAL_NS_BEGIN
 void resetMyriadDevice()
 {
 #ifdef HAVE_INF_ENGINE
-    sharedPlugins.erase(InferenceEngine::TargetDevice::eMYRIAD);
+    AutoLock lock(getInitializationMutex());
+    getSharedPlugins().erase(InferenceEngine::TargetDevice::eMYRIAD);
 #endif  // HAVE_INF_ENGINE
 }
 
